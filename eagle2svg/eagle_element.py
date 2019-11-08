@@ -3,8 +3,16 @@ import copy
 
 from eagle2svg import eagle_types
 
+COLOR_MAP = {
+    "default": '#FF761A',
+    "gray": 'gray',
+    "navy": 'navy',
+    "green": 'green',
+    "olive": 'olive'
+}
+
 COLOR = {
-    1: 'maroon',
+    1: '#FF761A',
     15: 'gray',
     16: 'navy',
     17: 'green',
@@ -17,13 +25,14 @@ COLOR = {
     26: 'gray',
     91: 'green',
     92: 'navy',
-    93: 'maroon',
-    94: 'maroon',
+    93: '#FF761A',
+    94: '#FF761A',
     95: 'gray',
     96: 'gray',
     97: 'gray',
     104: 'gray'
 }
+
 COLOR_MIRROR = {
     1: 16,
     16: 1,
@@ -55,6 +64,10 @@ PIN_LENGTH = {
 }
 
 
+def use_color(idx):
+    return
+
+
 def mirror_color(color):
     if color in COLOR_MIRROR:
         return COLOR_MIRROR[color]
@@ -81,6 +94,19 @@ def rotate(xy, trans, rot, mirror=False):
     xy.x = orig.x * cos - orig.y * sin + trans.x
     xy.y = orig.x * sin + orig.y * cos + trans.y
     xy.rot += math.degrees(ang)
+
+
+def rotate_center(xy, center, rot, mirror=False):
+    orig = copy.deepcopy(xy)
+    ang = math.radians(rot)
+    if mirror:
+        orig.x = -orig.x
+        xy.mirror = not xy.mirror
+        ang = -ang
+    sin = math.sin(ang)
+    cos = math.cos(ang)
+    xy.x = (orig.x - center.x) * cos - (orig.y - center.y) * sin + center.x
+    xy.y = (orig.x - center.x) * sin + (orig.y - center.y) * cos + center.y
 
 
 def align_mirror(align):
@@ -129,10 +155,7 @@ def rotate_text(xy, trans, rot, mirror=False):
         xy.rot += 360
 
 
-def render_text(text, xy, size, color,
-                mirror_text=False,
-                align='start',
-                valign=0.0):
+def render_text(text, xy, size, color, mirror_text=False, align='start', valign=0.0):
 
     size = size * 1.25
 
@@ -182,10 +205,7 @@ def render_text(text, xy, size, color,
             + ' translate(0 %f)' % (height * (valign - 0.2))
 
     return '<text fill="%s" font-size="%f" transform="%s"%s>%s</text>' % (
-        color, size,
-        transforms,
-        text_option,
-        text2)
+        color, size, transforms, text_option, text2)
 
 
 class Wire(object):
@@ -299,12 +319,7 @@ class Circle(object):
         self.width = float(data['@width'])
         self.layer = int(data['@layer'])
 
-    def render(self,
-               x=0.0,
-               y=0.0,
-               rot=0,
-               mirror=False,
-               view_box=None):
+    def render(self, x=0.0, y=0.0, rot=0, mirror=False, view_box=None):
         layer = self.layer
         if mirror:
             layer = mirror_color(layer)
@@ -345,12 +360,7 @@ class Pad(object):
             elif data['@rot'][0] == 'R':
                 self.rot = int(data['@rot'][1:])
 
-    def render(self,
-               x=0.0,
-               y=0.0,
-               rot=0,
-               mirror=False,
-               view_box=None):
+    def render(self, x=0.0, y=0.0, rot=0, mirror=False, view_box=None):
         xy = Vec2r(self.x, self.y, self.rot)
         rotate(xy, Vec2r(x, y), rot, mirror)
         view_box.expand(xy.x - self.diameter, -xy.y - self.diameter)
@@ -458,12 +468,7 @@ class Rectangle(object):
         self.y2 = float(data['@y2'])
         self.layer = int(data['@layer'])
 
-    def render(self,
-               x=0.0,
-               y=0.0,
-               rot=0,
-               mirror=False,
-               view_box=None):
+    def render(self, x=0.0, y=0.0, rot=0, mirror=False, view_box=None):
         layer = self.layer
         if mirror:
             layer = mirror_color(layer)
@@ -494,25 +499,39 @@ class Smd(object):
         self.dx = float(data['@dx'])
         self.dy = float(data['@dy'])
         self.layer = int(data['@layer'])
+        self.rot = 0
+        self.mirror = False
+        if '@rot' in data:
+            if data['@rot'][0] == 'M':
+                self.mirror = True
+                if data['@rot'][1] == 'R':
+                    self.rot = int(data['@rot'][2:])
+            elif data['@rot'][0] == 'R':
+                self.rot = int(data['@rot'][1:])
 
-    def render(self,
-               x=0.0,
-               y=0.0,
-               rot=0,
-               mirror=False,
-               view_box=None):
+    def render(self, x=0.0, y=0.0, rot=0, mirror=False, view_box=None):
         layer = self.layer
         if mirror:
             layer = mirror_color(layer)
+
         if layer in COLOR:
             xy1 = Vec2r(self.x - self.dx / 2, self.y - self.dy / 2)
             xy2 = Vec2r(self.x - self.dx / 2, self.y + self.dy / 2)
             xy3 = Vec2r(self.x + self.dx / 2, self.y + self.dy / 2)
             xy4 = Vec2r(self.x + self.dx / 2, self.y - self.dy / 2)
+
+            xy = Vec2r(self.x, self.y)
+
+            rotate_center(xy1, xy, self.rot, self.mirror)
+            rotate_center(xy2, xy, self.rot, self.mirror)
+            rotate_center(xy3, xy, self.rot, self.mirror)
+            rotate_center(xy4, xy, self.rot, self.mirror)
+
             rotate(xy1, Vec2r(x, y), rot, mirror)
             rotate(xy2, Vec2r(x, y), rot, mirror)
             rotate(xy3, Vec2r(x, y), rot, mirror)
             rotate(xy4, Vec2r(x, y), rot, mirror)
+
             view_box.expand(xy1.x, -xy1.y)
             view_box.expand(xy2.x, -xy2.y)
             view_box.expand(xy3.x, -xy3.y)
@@ -682,14 +701,7 @@ class Pin(object):
             elif data['@rot'][0] == 'R':
                 self.rot = int(data['@rot'][1:])
 
-    def render(self,
-               x=0.0,
-               y=0.0,
-               rot=0,
-               mirror=False,
-               replace={},
-               connects={},
-               view_box=None):
+    def render(self, x=0.0, y=0.0, rot=0, mirror=False, replace={}, connects={}, view_box=None):
         xy1 = Vec2r(0.0, 0.0)
         xy2 = Vec2r(PIN_LENGTH[self.length], 0.0)
         rotate(xy1, Vec2r(self.x, self.y), self.rot, self.mirror)
@@ -717,9 +729,10 @@ class Pin(object):
             rotate_text(xy, Vec2r(self.x, self.y), self.rot, self.mirror)
             rotate_text(xy, Vec2r(x, y), rot, mirror)
             xy.y += 1.5
-            view_box.append(
-                93, render_text(connects[self.name].pad, xy, 1.5, 'gray',
-                                align='middle', valign=0.5))
+
+            if self.name in connects:
+                view_box.append(
+                    93, render_text(connects[self.name].pad, xy, 1.5, 'gray', align='middle', valign=0.5))
 
 
 class Frame(object):
@@ -1040,7 +1053,11 @@ class Device(object):
 
 class Deviceset(object):
     def __init__(self, data):
-        self.name = data['@name']
+        if '@name' in data:
+            self.name = data['@name']
+        else:
+            self.name = ''
+
         self.uservalue = False
         if '@uservalue' in data:
             if data['@uservalue'] == 'yes':
@@ -1057,18 +1074,26 @@ class Deviceset(object):
 
 class Library(object):
     def __init__(self, data):
-        self.name = data['@name']
+        if '@name' in data:
+            self.name = data['@name']
+        else:
+            self.name = ''
+
         self.symbols = {}
         self.devicesets = {}
         self.packages = {}
+        self.gates = {}
+
         if 'symbols' in data:
             for symbol_data in eagle_types.named_array(data['symbols']):
                 symbol = Symbol(symbol_data)
                 self.symbols[symbol.name] = symbol
+
         if 'devicesets' in data:
             for deviceset_data in eagle_types.named_array(data['devicesets']):
                 deviceset = Deviceset(deviceset_data)
                 self.devicesets[deviceset.name] = deviceset
+
         if 'packages' in data:
             for package_data in eagle_types.named_array(data['packages']):
                 package = Package(package_data)
@@ -1116,11 +1141,7 @@ class Element(object):
             for attribute_data in eagle_types.array(data['attribute']):
                 self.attributes[attribute_data['@name']] = Text(attribute_data)
 
-    def render(self,
-               libraries={},
-               replace={},
-               mirror_text=False,
-               view_box=None):
+    def render(self, libraries={}, replace={}, mirror_text=False, view_box=None):
         replace2 = copy.deepcopy(replace)
         library = libraries[self.library]
         replace2['>NAME'] = self.name
